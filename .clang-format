@@ -1,0 +1,12 @@
+BasedOnStyle: Chromium
+Language: Cpp
+ColumnLimit: 120
+Standard: c++17
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Empty
+AllowShortLoopsOnASingleLine: false
+Cpp11BracedListStyle: true
+SpaceBeforeCpp11BracedList: false

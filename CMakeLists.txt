@@ -24,4 +24,4 @@ target_compile_definitions(vkexp PRIVATE "$<$<PLATFORM_ID:Windows>:VK_USE_PLATFO
 target_compile_options(vkexp PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/W4,-Wall>")
 
 source_group("headers" FILES ${HEADERS})
-source_group("sources" FILES ${SOURCES}) 
+source_group("sources" FILES ${SOURCES})
