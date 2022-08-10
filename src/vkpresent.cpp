@@ -11,8 +11,7 @@ std::vector<const char*> vw::getInstancePresentationExtensions() {
   return extensions;
 }
 
-vw::Swapchain::Swapchain(vk::Device logicalDevice, vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, vk::Queue presentQueue)
-    : mDeviceHandle{logicalDevice}, mPresentQueue{presentQueue} {
+vw::Swapchain::Swapchain(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, vk::Queue presentQueue) : mPresentQueue{presentQueue} {
   // default surface format was checked earlier
   auto deviceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
   mSelectedFormat = {vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear};
@@ -29,20 +28,20 @@ vw::Swapchain::Swapchain(vk::Device logicalDevice, vk::PhysicalDevice physicalDe
   swapchainCreateInfo.imageColorSpace = mSelectedFormat.colorSpace;
   swapchainCreateInfo.imageExtent = mSurfaceCapabilities.currentExtent;
   swapchainCreateInfo.imageArrayLayers = 1;
-  swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
+  swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage;
   swapchainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
   swapchainCreateInfo.preTransform = mSurfaceCapabilities.currentTransform;
   swapchainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
   swapchainCreateInfo.presentMode = mSelectedMode;
   swapchainCreateInfo.clipped = true;
 
-  mSwapchain = mDeviceHandle.createSwapchainKHR(swapchainCreateInfo);
-  mSwapchainImages = mDeviceHandle.getSwapchainImagesKHR(mSwapchain);
+  mSwapchain = vw::g::device.createSwapchainKHR(swapchainCreateInfo);
+  mSwapchainImages = vw::g::device.getSwapchainImagesKHR(mSwapchain);
   mSwapchainImageViews.reserve(mSwapchainImages.size());
 
   for (auto& image : mSwapchainImages) {
     mSwapchainImageViews.push_back(
-        mDeviceHandle.createImageView({{}, image, vk::ImageViewType::e2D, mSelectedFormat.format, {}, {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}}));
+        vw::g::device.createImageView({{}, image, vk::ImageViewType::e2D, mSelectedFormat.format, {}, {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}}));
   }
 }
 
@@ -84,12 +83,12 @@ std::vector<vk::Image> vw::Swapchain::getImages() {
 
 uint32_t vw::Swapchain::getNextImageIndex(vk::Semaphore signaledSemaphore) {
   uint32_t imageIndex;
-  (void)mDeviceHandle.acquireNextImageKHR(mSwapchain, UINT64_MAX, signaledSemaphore, {}, &imageIndex);
+  (void)vw::g::device.acquireNextImageKHR(mSwapchain, UINT64_MAX, signaledSemaphore, {}, &imageIndex);
   return imageIndex;
 }
 
 vw::Swapchain::~Swapchain() {
   for (auto& imageView : mSwapchainImageViews)
-    mDeviceHandle.destroyImageView(imageView);
-  mDeviceHandle.destroySwapchainKHR(mSwapchain);
+    vw::g::device.destroyImageView(imageView);
+  vw::g::device.destroySwapchainKHR(mSwapchain);
 }

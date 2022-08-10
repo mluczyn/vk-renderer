@@ -15,15 +15,13 @@ DWORD toDWORD(const std::byte* bytes) {
   return *reinterpret_cast<const DWORD*>(bytes);
 }
 constexpr DWORD toDWORD(const char* chars) {
-  return static_cast<DWORD>(static_cast<DWORD>(chars[0]) 
-  | (static_cast<DWORD>(chars[1]) << 8u) 
-  | (static_cast<DWORD>(chars[2]) << 16u) 
-  | (static_cast<DWORD>(chars[3]) << 24u));
+  return static_cast<DWORD>(static_cast<DWORD>(chars[0]) | (static_cast<DWORD>(chars[1]) << 8u) | (static_cast<DWORD>(chars[2]) << 16u) |
+                            (static_cast<DWORD>(chars[3]) << 24u));
 }
 
 struct alignas(DWORD) PixelFormat {
   enum : DWORD { AlphaPixels = 0x1, Alpha = 0x2, FourCC = 0x4, RGB = 0x40, YUV = 0x200, Luminance = 0x20000 };
-  enum CC : DWORD { 
+  enum CC : DWORD {
     DXT1 = toDWORD("DXT1"),
     DXT2 = toDWORD("DXT2"),
     DXT3 = toDWORD("DXT3"),
@@ -42,7 +40,6 @@ struct alignas(DWORD) PixelFormat {
   }
 };
 static_assert(sizeof(PixelFormat) == 32);
-
 
 struct alignas(DWORD) Header {
   enum : DWORD {
@@ -404,6 +401,7 @@ class DDSFile : public vw::ImageFile {
   vk::Extent3D getExtent() const override {
     return {mFileStart.header.width, mFileStart.header.height, 1};
   }
+
  private:
   std::filesystem::path mPath;
   FileStart mFileStart = {};
@@ -414,4 +412,4 @@ class DDSFile : public vw::ImageFile {
   bool mIsDX10 = false;
 };
 };  // namespace dds
-}  // namespace vk
+}  // namespace vw

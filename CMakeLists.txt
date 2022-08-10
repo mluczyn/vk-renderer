@@ -5,7 +5,6 @@ add_compile_definitions("$<$<PLATFORM_ID:Windows>:NOMINMAX>")
 
 set(BUILD_SHARED_LIBS NO)
 add_subdirectory(glfw)
-add_subdirectory(glslang)
 add_subdirectory(glm)
 add_subdirectory(assimp)
 
@@ -16,8 +15,8 @@ file(GLOB SOURCES src/*.cpp)
 
 add_executable(vkexp ${SOURCES} ${HEADERS})
 set_target_properties(vkexp PROPERTIES CXX_STANDARD 17 CMAKE_CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
-target_link_libraries(vkexp Vulkan::Vulkan glfw SPIRV glslang glslang-default-resource-limits assimp)
-target_include_directories(vkexp PRIVATE inc Vulkan::Vulkan glm assimp "${CMAKE_CURRENT_SOURCE_DIR}/glfw/include" "${CMAKE_CURRENT_SOURCE_DIR}/external_inc")
+target_link_libraries(vkexp ${Vulkan_LIBRARIES} glfw assimp)
+target_include_directories(vkexp PRIVATE ${Vulkan_INCLUDE_DIRS} inc glm assimp "${CMAKE_CURRENT_SOURCE_DIR}/glfw/include" "${CMAKE_CURRENT_SOURCE_DIR}/external_inc")
 
 target_compile_definitions(vkexp PRIVATE VW_DEBUG=$<CONFIG:DEBUG>)
 target_compile_definitions(vkexp PRIVATE "$<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>")

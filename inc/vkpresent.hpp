@@ -1,10 +1,11 @@
 #pragma once
 #include <chrono>
+#include <iostream>
 #include <string>
 #include <vector>
-#include <iostream>
 #include "vkutils.hpp"
 #include "vulkan/vulkan.hpp"
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW\glfw3.h>
 
 namespace vw {
@@ -78,7 +79,7 @@ class Window {
 
 class Swapchain {
  public:
-  Swapchain(vk::Device logicalDevice, vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, vk::Queue presentQueue);
+  Swapchain(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, vk::Queue presentQueue);
   void present(uint32_t imageIndex, vw::ArrayProxy<vk::Semaphore> waitConditions);
   void presentAndSync(uint32_t imageIndex, vw::ArrayProxy<vk::Semaphore> waitConditions);
   vk::Extent2D getExtent();
@@ -94,7 +95,6 @@ class Swapchain {
   std::vector<vk::Image> mSwapchainImages;
   std::vector<vk::ImageView> mSwapchainImageViews;
 
-  vk::Device mDeviceHandle;
   vk::Queue mPresentQueue;
   vk::SurfaceCapabilitiesKHR mSurfaceCapabilities;
   vk::SurfaceFormatKHR mSelectedFormat;

@@ -1,0 +1,132 @@
+#version 460
+#define LIGHT_COUNT 13
+#define PI 3.14159
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout (push_constant) uniform PushData {
+    vec3 cameraPos;
+    float pointLightRadius;
+    mat4 inverseVP;
+} push; 
+layout (binding = 0) uniform sampler2D samplers[4];
+struct Light {
+    vec3 pos;
+    float opening_angle;
+    vec3 color;
+    float penumbra_angle;
+    vec3 dir;
+    float _pad;
+};
+layout (std140, binding = 1) uniform UBO {
+    Light lights[LIGHT_COUNT];
+} ubo;
+layout(rgba8, set=1, binding = 0) writeonly uniform image2D outTex;
+
+float chi(float x) {
+    return x > 0 ? 1 : 0;
+}
+float saturate(float x) {
+    return clamp(x, 0.0, 1.0);
+}
+
+float fresnelSchlick(float f0, float f90, float cosTheta) {
+    return f0 + (f90 - f0) * pow(max(1-cosTheta,0),5);
+}
+
+vec3 fresnelSchlick3(vec3 f0, vec3 f90, float cosTheta) {
+    return f0 + (f90 - f0) * pow(max(1-cosTheta,0),5);
+}
+
+vec3 diffuse(vec3 v, vec3 l, vec3 n, vec3 color, float roughness) {
+    float vDotN = dot(v,n);
+    float lDotN = dot(l,n);
+    if(min(vDotN,lDotN) <= 1e-6)
+        return vec3(0.0);
+
+    vec3 h = normalize(v + l);
+    float lDotH = dot(v,h);
+    float energyBias = mix(0.0,0.5,roughness);
+    float energyFactor = mix(1.0,1.0/1.51,roughness);
+    float f90 = energyBias + 2.0 * lDotH * lDotH * roughness;
+    
+    float weight = energyFactor;
+    weight *= fresnelSchlick(1.0, f90, vDotN);
+    weight *= fresnelSchlick(1.0, f90, lDotN);
+
+    return PI * color * lDotN * weight;
+}
+
+float ndfGGX(float a2, float hDotN) {
+    float d = (a2 - 1.0) * hDotN * hDotN + 1.0;
+    return a2 / (d * d * PI);
+}
+
+float lambdaGGX(float a2, float cosTheta) {
+    if(cosTheta <= 0)
+        return 0;
+    float cosTheta2 = cosTheta * cosTheta;
+    float tanTheta2 = max(1.0 - cosTheta2, 0) / cosTheta2;
+    return 0.5 * (-1.0 + sqrt(1.0 + a2 + tanTheta2));
+}
+
+float maskingSmithGGX(float a2, float vDotN, float lDotN) {
+    float lambdaV = lambdaGGX(a2, vDotN) + 1.0;
+    float lambdaL = lambdaGGX(a2, lDotN) + 1.0;
+    return 1.0 / (lambdaV * lambdaL);
+}
+
+vec3 specular(vec3 v, vec3 l, vec3 n, vec3 color, float alpha) {
+    if(alpha == 0.0)
+        return vec3(0.0);
+
+    float vDotN = dot(v,n);
+    float lDotN = dot(l,n);
+    if(min(vDotN,lDotN) <= 1e-6)
+        return vec3(0.0);
+
+    vec3 h = normalize(v + l);
+    float hDotN = dot(h,n);
+    float vDotH = dot(v,h);
+    float a2 = alpha * alpha;
+
+    float D = ndfGGX(a2,hDotN);
+    float G = maskingSmithGGX(a2, vDotN, lDotN);
+    vec3 F = fresnelSchlick3(color, vec3(1.0f), vDotH);
+    return F * D * G * 0.25 / vDotN;
+}
+
+void main() {
+    vec2 UV = (gl_GlobalInvocationID.xy + 0.5) / (gl_NumWorkGroups * gl_WorkGroupSize).xy;
+    float clipDepth = texture(samplers[3], UV).x;
+    vec4 clipFragPos = vec4(UV * 2.0 - 1.0, clipDepth, 1.0);
+    vec4 worldFragPos = push.inverseVP * clipFragPos;
+    vec3 fragPos = worldFragPos.xyz / worldFragPos.w;
+
+    vec3 albedo = texture(samplers[0], UV).rgb;
+    const float ambient = 0.05;
+    vec3 fragColor = ambient * albedo;
+    const vec3 normal = -normalize(texture(samplers[2], UV).rgb);
+    const vec3 material = texture(samplers[1], UV).rgb;
+    const float occlusion = material.r;
+    const float roughness = material.g;
+    const float metalness = material.b;
+    
+    vec3 diffuseColor = mix(albedo, vec3(0),metalness);
+    vec3 specularColor = mix(vec3(0),albedo,metalness);
+    const float alpha = max(roughness * roughness, 0.0064);
+
+    vec3 viewDir = normalize(push.cameraPos - fragPos);
+
+    for(int j = 0; j < LIGHT_COUNT; j++) {
+        vec3 lightDir = ubo.lights[j].pos - fragPos;
+        float distSqr = max(dot(lightDir,lightDir),1e-7);
+        lightDir = normalize(lightDir);
+
+        vec3 Li = ubo.lights[j].color / distSqr;
+
+        fragColor += Li * diffuse(viewDir, lightDir, normal, diffuseColor, roughness);
+        fragColor += Li * specular(viewDir, lightDir, normal, specularColor, alpha);
+    }
+    imageStore(outTex, ivec2(gl_GlobalInvocationID.xy), vec4(fragColor,1.0));
+}
+

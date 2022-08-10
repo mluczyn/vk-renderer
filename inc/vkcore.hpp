@@ -10,6 +10,7 @@
 #include "vkutils.hpp"
 
 namespace vw {
+
 constexpr std::array<const char*, 1> DebugValidationLayers = {"VK_LAYER_KHRONOS_validation"};
 
 class Extent {
@@ -25,22 +26,24 @@ class Extent {
 };
 class Semaphore : public vw::HandleContainerUnique<vk::Semaphore> {
  public:
-  Semaphore(vk::Device device);
+  Semaphore() {
+    mHandle = vw::g::device.createSemaphore({});
+  }
 };
 
 class Fence : public vw::HandleContainerUnique<vk::Fence> {
  public:
-  Fence(vk::Device device) : ContainerType{device} {
-    mHandle = mDeviceHandle.createFence({});
+  Fence() {
+    mHandle = vw::g::device.createFence({});
   }
   bool signaled() const {
-    return mDeviceHandle.getFenceStatus(mHandle) == vk::Result::eSuccess;
+    return vw::g::device.getFenceStatus(mHandle) == vk::Result::eSuccess;
   }
   void reset() {
-    mDeviceHandle.resetFences(mHandle);
+    vw::g::device.resetFences(mHandle);
   }
   void wait() {
-    mDeviceHandle.waitForFences(mHandle, true, 1000000);
+    vw::g::device.waitForFences(mHandle, true, 1000000);
   }
 };
 
@@ -61,9 +64,7 @@ class CommandBuffer : public vk::CommandBuffer {
                               const vk::Rect2D& renderArea,
                               ArrayProxy<vk::ClearValue> clearValues,
                               vk::SubpassContents subpassContents) const {
-    vk::CommandBuffer::beginRenderPass(
-        vk::RenderPassBeginInfo{renderPass, framebuffer, renderArea, clearValues.size(), clearValues.data()},
-        subpassContents);
+    vk::CommandBuffer::beginRenderPass(vk::RenderPassBeginInfo{renderPass, framebuffer, renderArea, clearValues.size(), clearValues.data()}, subpassContents);
   }
   void onSubmit(std::shared_ptr<vw::Fence> fence) {
     mState = State::Pending;
@@ -87,11 +88,8 @@ class CommandBuffer : public vk::CommandBuffer {
 
 class CommandPool : public vw::HandleContainerUnique<vk::CommandPool> {
  public:
-  CommandPool(vk::Device deviceHandle,
-              uint32_t queueFamilyIndex,
-              vk::CommandPoolCreateFlags flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-      : ContainerType{deviceHandle} {
-    mHandle = mDeviceHandle.createCommandPool({flags, queueFamilyIndex});
+  CommandPool(uint32_t queueFamilyIndex, vk::CommandPoolCreateFlags flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer) {
+    mHandle = vw::g::device.createCommandPool({flags, queueFamilyIndex});
   }
   void allocateBuffers(uint32_t count);
   size_t getBufferCount() const {
@@ -116,8 +114,7 @@ class CommandPool : public vw::HandleContainerUnique<vk::CommandPool> {
     return mBuffers.end();
   }
   inline void reset(bool releaseResources = false) {
-    mDeviceHandle.resetCommandPool(
-        mHandle, releaseResources ? vk::CommandPoolResetFlagBits::eReleaseResources : vk::CommandPoolResetFlags{});
+    vw::g::device.resetCommandPool(mHandle, releaseResources ? vk::CommandPoolResetFlagBits::eReleaseResources : vk::CommandPoolResetFlags{});
   }
 
  private:
@@ -126,10 +123,9 @@ class CommandPool : public vw::HandleContainerUnique<vk::CommandPool> {
 
 class Queue : public vw::HandleContainer<vk::Queue> {
  public:
-  Queue(vk::Device device, vk::Queue queue, uint32_t queueFamilyIndex)
-      : mDeviceHandle{device}, mOneTimeCommandPool{device, queueFamilyIndex}{
-        mHandle = queue;
-      }
+  Queue(vk::Queue queue, uint32_t queueFamilyIndex) : mOneTimeCommandPool{queueFamilyIndex} {
+    mHandle = queue;
+  }
   void allocateOneTimeBuffers(uint32_t count) {
     mOneTimeCommandPool.allocateBuffers(count);
   }
@@ -140,7 +136,7 @@ class Queue : public vw::HandleContainer<vk::Queue> {
     }
     return false;
   }
-  template<typename T>
+  template <typename T>
   std::shared_ptr<vw::Fence> oneTimeRecordSubmit(T recordFunc,
                                                  std::initializer_list<vk::Semaphore> waitSemaphores = {},
                                                  std::initializer_list<vk::PipelineStageFlags> waitStages = {},
@@ -149,7 +145,7 @@ class Queue : public vw::HandleContainer<vk::Queue> {
     cmdBuff.record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit, recordFunc);
 
     vk::SubmitInfo submitInfo{waitSemaphores, waitStages, cmdBuff, signalSemaphores};
-    auto fence = std::make_shared<vw::Fence>(mDeviceHandle);
+    auto fence = std::make_shared<vw::Fence>();
     cmdBuff.onSubmit(fence);
     mHandle.submit(submitInfo, *fence.get());
     return fence;
@@ -164,9 +160,10 @@ class Queue : public vw::HandleContainer<vk::Queue> {
       if (!buf.isPending())
         return buf;
     }
-    throw std::runtime_error("No recordable command buffers avaliable (hasReadyBuffer() not checked)");
+    throw std::runtime_error(
+        "No recordable command buffers avaliable (hasReadyBuffer() not "
+        "checked)");
   }
-  vk::Device mDeviceHandle;
   vw::CommandPool mOneTimeCommandPool;
 };
 
@@ -188,10 +185,9 @@ class PhysicalDevice : public vk::PhysicalDevice {
 
 class Instance : public vk::Instance {
  public:
-  Instance(std::string appName, uint32_t version, std::vector<const char*> platformExtensions = {});
+  Instance(std::string appName, uint32_t version, std::vector<const char*> platformExtensions = {}, bool enableValidation = false);
   ~Instance();
-  std::optional<vk::PhysicalDevice> findPhysicalDevice(ArrayProxy<QueueWorkType> workTypes,
-                                                       ArrayProxy<const std::string> extensions) const;
+  std::optional<vk::PhysicalDevice> findPhysicalDevice(ArrayProxy<QueueWorkType> workTypes, ArrayProxy<const std::string> extensions) const;
 
  private:
   bool checkValidationLayerSupport();

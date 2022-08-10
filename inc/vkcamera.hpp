@@ -1,9 +1,10 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <optional>
 #include <set>
+#include "vulkan/vulkan.hpp"
 
 class CameraInputHandler {
  public:
@@ -55,12 +56,12 @@ class CameraInputHandler {
   }
 
  private:
-  static constexpr float kUpMax = 0.999f * glm::pi<float>();
-  static constexpr float kUpMin = 0.001f * glm::pi<float>();
+  static constexpr float kUpMax = 0.99f * glm::pi<float>();
+  static constexpr float kUpMin = 0.01f * glm::pi<float>();
   double mDeltaTime = 1.0f;
-  const glm::vec3 mCameraUp{0.0f, 1.0f, 0.0f};
-  glm::vec3 mCameraPos{0.0f, 0.0f, 3.0f}, mCameraForward{0.0f, 0.0f, -1.0f};
+  const glm::vec3 mCameraUp{0.0f, -1.0f, 0.0f};
+  glm::vec3 mCameraPos{0.0f, 3.0f, 71.0f}, mCameraForward{0.0f, 0.0f, -1.0f};
   std::optional<glm::vec2> mPrevCursorPos;
-  const float mCameraMoveMult = 0.05f;
+  const float mCameraMoveMult = 0.2f;
   const std::set<int> mCameraKeySet = {GLFW_KEY_SPACE, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D};
 };

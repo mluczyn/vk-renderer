@@ -1,8 +1,16 @@
 #pragma once
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <vulkan/vulkan.hpp>
 
 namespace vw {
+
+namespace g {
+extern vk::Device device;
+extern vk::PhysicalDevice physicalDevice;
+extern vk::Instance instance;
+}  // namespace g
 
 template <typename T>
 class ArrayProxy {
@@ -11,36 +19,104 @@ class ArrayProxy {
   using value_type = ElementType;
   ArrayProxy() : mPtr{nullptr}, mCount{0} {}
   ArrayProxy(const ElementType& ref) : mPtr{&ref}, mCount{1} {}
+  template <uint32_t N>
+  ArrayProxy(const T (&array)[N]) : mPtr{array}, mCount{N} {}
   template <size_t N>
   ArrayProxy(const std::array<ElementType, N>& array) : mPtr{array.data()}, mCount{static_cast<uint32_t>(array.size())} {}
   ArrayProxy(const std::vector<std::remove_const_t<ElementType>>& vector) : mPtr{vector.data()}, mCount{static_cast<uint32_t>(vector.size())} {}
   ArrayProxy(const std::initializer_list<ElementType>& iList) : mPtr{iList.begin()}, mCount{static_cast<uint32_t>(iList.size())} {}
   ArrayProxy(const T* ptr, uint32_t count) : mPtr{ptr}, mCount{count} {}
-  inline T const* data() const {
+  T const* data() const {
     return mPtr;
   }
-  inline const T& operator[](size_t i) const {
+  const T& operator[](size_t i) const {
     return mPtr[i];
   }
-  inline T const* begin() const {
+  T const* begin() const {
     return mPtr;
   }
-  inline T const* end() const {
+  T const* end() const {
     return mPtr + mCount;
   }
-  inline const uint32_t size() const {
+  const uint32_t size() const {
     return mCount;
   }
-  inline const uint32_t byteSize() const {
+  const uint32_t byteSize() const {
     return mCount * sizeof(ElementType);
   }
-  inline std::vector<T> copyToVec() const {
+  std::vector<T> copyToVec() const {
     return std::vector<T>{mPtr, mPtr + mCount};
   }
 
  private:
   T const* mPtr;
   const uint32_t mCount;
+};
+
+template <typename T>
+class FixedVec {
+ public:
+  FixedVec(size_t capacity) {
+    mBegin = alloc(capacity * sizeof(T));
+    mEnd = mBegin;
+    mCapacity = mBegin + capacity;
+  }
+  ~FixedVec() {
+    dealloc(mBegin);
+  }
+  T* begin() {
+    return mBegin;
+  }
+  const T* begin() const {
+    return mBegin;
+  }
+  const T* cbegin() const {
+    return mBegin;
+  }
+  T* end() {
+    return mEnd;
+  }
+  const T* end() const {
+    return mEnd;
+  }
+  const T* cend() const {
+    return mEnd;
+  }
+  uint32_t size() const {
+    return static_cast<uint32_t>(mEnd - mBegin);
+  }
+  uint32_t byteSize() const {
+    return sizeof(T) * size();
+  }
+  uint32_t capacity() const {
+    return static_cast<uint32_t>(mCapacity - mBegin);
+  }
+  T& operator[](size_t n) {
+    return mBegin[n];
+  }
+  const T& operator[](size_t n) const {
+    return mBegin[n];
+  }
+  template <typename... Args>
+  T& emplace_back(Args&&... args) {
+    new (mEnd) T(std::forward<Args>(args)...);
+    mEnd++;
+    return *mEnd;
+  }
+
+ private:
+  static T* alloc(size_t byteCount) {
+    if (byteCount == 0)
+      return nullptr;
+    return reinterpret_cast<T*>(new char[byteCount]);
+  }
+  static void dealloc(T* ptr) {
+    if (ptr != nullptr)
+      delete[] reinterpret_cast<char*>(ptr);
+  }
+  T* mBegin = nullptr;
+  T* mEnd = nullptr;
+  T* mCapacity = nullptr;
 };
 
 template <typename T>
@@ -64,28 +140,22 @@ template <typename T>
 class HandleContainerUnique : public HandleContainer<T> {
  public:
   using ContainerType = HandleContainerUnique<T>;
-  HandleContainerUnique(vk::Device device) : mDeviceHandle{device} {}
+  HandleContainerUnique() {}
   HandleContainerUnique(const ContainerType&) = delete;
   HandleContainerUnique(ContainerType&& other) noexcept {
-    mDeviceHandle = other.mDeviceHandle;
     this->mHandle = other.mHandle;
     other.mHandle = VK_NULL_HANDLE;
-    other.mDeviceHandle = VK_NULL_HANDLE;
   }
   ContainerType& operator=(const ContainerType&) = delete;
   ContainerType& operator=(ContainerType&& other) noexcept {
-    mDeviceHandle = other.mDeviceHandle;
     this->mHandle = other.mHandle;
-    other.mDeviceHandle = VK_NULL_HANDLE;
     other.mHandle = VK_NULL_HANDLE;
     return *this;
   }
   ~HandleContainerUnique() {
-    if (mDeviceHandle && this->mHandle)
-      mDeviceHandle.destroy(this->mHandle);
+    if (this->mHandle)
+      vw::g::device.destroy(this->mHandle);
   }
- protected:
-  vk::Device mDeviceHandle = VK_NULL_HANDLE;
 };
 
 template <typename T>
@@ -121,18 +191,45 @@ constexpr auto tupleToArray(TupleT&& tuple) {
 }
 
 class DataFile {
-public:
+ public:
   virtual ~DataFile() = default;
   virtual size_t dataSize() const = 0;
   virtual void loadData(std::byte* dst) const = 0;
 };
 
 class ImageFile : public DataFile {
-public:
+ public:
   virtual ~ImageFile() = default;
   virtual vk::Format getFormat() const {
     return vk::Format::eUndefined;
   }
   virtual vk::Extent3D getExtent() const = 0;
 };
+
+template <typename T>
+std::vector<T> loadBinaryFile(const std::filesystem::path path) {
+  if (!std::filesystem::exists(path))
+    throw std::runtime_error("File " + path.string() + " does not exist!");
+  if (!std::filesystem::is_regular_file(path))
+    throw std::runtime_error("File " + path.string() + " is not a regular file!");
+
+  auto fSize = std::filesystem::file_size(path);
+  if (fSize % sizeof(T) != 0)
+    throw std::runtime_error("File " + path.string() + " size is not a multiple of sizeof(T) ");
+
+  std::vector<T> dataVec(fSize / sizeof(T));
+  {
+    std::ifstream binaryFile{path, std::ios::binary};
+    if (!binaryFile.read(reinterpret_cast<char*>(dataVec.data()), fSize))
+      throw std::runtime_error("Error reading  file " + path.string());
+  }
+  return dataVec;
+}
+
+inline constexpr void alignTo(vk::DeviceSize& size, vk::DeviceSize alignment) {
+  auto rem = size % alignment;
+  if (rem != 0)
+    size += alignment - rem;
+}
+
 }  // namespace vw

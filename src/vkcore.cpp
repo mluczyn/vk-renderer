@@ -1,6 +1,14 @@
 #include "vkcore.hpp"
 #include <algorithm>
 
+namespace vw {
+namespace g {
+vk::Device device = VK_NULL_HANDLE;
+vk::PhysicalDevice physicalDevice = VK_NULL_HANDLE;
+vk::Instance instance = VK_NULL_HANDLE;
+}  // namespace g
+}  // namespace vw
+
 VkBool32 VKAPI_PTR debugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                           VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                                           const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -27,22 +35,25 @@ VkBool32 VKAPI_PTR debugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT
       std::cerr << "\t\t"
                 << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
   }
-  if (pCallbackData->objectCount)
-  {
-          std::cerr << "\t" << "Objects:\n";
-          for (uint8_t i = 0; i < pCallbackData->objectCount; i++)
-          {
-                  std::cerr << "\t\t" << "Object " << i << "\n";
-                  std::cerr << "\t\t\t" << "objectType   = " << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType)) << "\n";
-                  std::cerr << "\t\t\t" << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
-                  if (pCallbackData->pObjects[i].pObjectName)
-                          std::cerr << "\t\t\t" << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
-          }
+  if (pCallbackData->objectCount) {
+    std::cerr << "\t"
+              << "Objects:\n";
+    for (uint8_t i = 0; i < pCallbackData->objectCount; i++) {
+      std::cerr << "\t\t"
+                << "Object " << i << "\n";
+      std::cerr << "\t\t\t"
+                << "objectType   = " << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType)) << "\n";
+      std::cerr << "\t\t\t"
+                << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
+      if (pCallbackData->pObjects[i].pObjectName)
+        std::cerr << "\t\t\t"
+                  << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
+    }
   }
   return VK_TRUE;
 }
 
-vw::Instance::Instance(std::string appName, uint32_t version, std::vector<const char*> platformExtensions) {
+vw::Instance::Instance(std::string appName, uint32_t version, std::vector<const char*> platformExtensions, bool enableValidation) {
   vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
                                                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo);
   vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
@@ -50,11 +61,10 @@ vw::Instance::Instance(std::string appName, uint32_t version, std::vector<const 
   std::array<vk::ValidationFeatureEnableEXT, 1> enableFeatures{vk::ValidationFeatureEnableEXT::eDebugPrintf};
   vk::ValidationFeaturesEXT validationFeatures{enableFeatures, {}};
   vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo = {{}, severityFlags, messageTypeFlags, &debugMessengerCallback};
-  if constexpr (VW_DEBUG) {
+  if (enableValidation) {
     platformExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    if (!checkValidationLayerSupport()) {
+    if (!checkValidationLayerSupport())
       throw std::runtime_error("VwInstance: Validation mode not available!");
-    }
   }
   if (!checkExtensionSupport(platformExtensions))
     throw std::runtime_error("VwInstance: Extensions not available!");
@@ -70,7 +80,7 @@ vw::Instance::Instance(std::string appName, uint32_t version, std::vector<const 
   createInfo.pApplicationInfo = &appInfo;
   createInfo.enabledExtensionCount = static_cast<uint32_t>(platformExtensions.size());
   createInfo.ppEnabledExtensionNames = platformExtensions.data();
-  if constexpr (VW_DEBUG) {
+  if (enableValidation) {
     createInfo.enabledLayerCount = static_cast<uint32_t>(DebugValidationLayers.size());
     createInfo.ppEnabledLayerNames = DebugValidationLayers.data();
     debugMessengerCreateInfo.pNext = &validationFeatures;
@@ -78,8 +88,9 @@ vw::Instance::Instance(std::string appName, uint32_t version, std::vector<const 
   }
 
   vk::Instance::operator=(vk::createInstance(createInfo));
+  vw::g::instance = *this;
 
-  if constexpr (VW_DEBUG) {
+  if (enableValidation) {
     vk::DynamicLoader dl;
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     vk::DispatchLoaderDynamic instanceLoader(static_cast<VkInstance>(*this), vkGetInstanceProcAddr);
@@ -118,8 +129,8 @@ std::optional<vk::PhysicalDevice> vw::Instance::findPhysicalDevice(ArrayProxy<Qu
 bool vw::Instance::checkValidationLayerSupport() {
   size_t requiredLayerCount = vw::DebugValidationLayers.size();
   auto availableLayers = vk::enumerateInstanceLayerProperties();
-  for (auto layerR : vw::DebugValidationLayers) {
-    for (auto layerA : availableLayers) {
+  for (auto& layerR : vw::DebugValidationLayers) {
+    for (auto& layerA : availableLayers) {
       if (std::string(layerR) == layerA.layerName)
         requiredLayerCount--;
     }
@@ -132,8 +143,8 @@ bool vw::Instance::checkExtensionSupport(std::vector<const char*> extensions) {
   size_t requiredExtensionCount = extensions.size();
   auto availableExtensions = vk::enumerateInstanceExtensionProperties();
 
-  for (auto extensionR : extensions) {
-    for (auto extensionA : availableExtensions) {
+  for (auto& extensionR : extensions) {
+    for (auto& extensionA : availableExtensions) {
       if (strcmp(extensionR, extensionA.extensionName) == 0)
         requiredExtensionCount--;
     }
@@ -156,19 +167,23 @@ vw::Device::Device(vk::PhysicalDevice physicalDevice, ArrayProxy<const std::stri
   rawExtensions.reserve(extensions.size());
   for (auto& extension : extensions)
     rawExtensions.push_back(extension.c_str());
-  
+
   vk::DeviceCreateInfo createInfo{{}, vw::size32(queueCreateInfos), queueCreateInfos.data(), {},
                                   {}, vw::size32(rawExtensions),    rawExtensions.data(),    &mDeviceFeatures};
   vk::PhysicalDeviceDescriptorIndexingFeatures indexingFeatures;
   indexingFeatures.descriptorBindingVariableDescriptorCount = true;
   indexingFeatures.runtimeDescriptorArray = true;
   indexingFeatures.shaderSampledImageArrayNonUniformIndexing = true;
+  vk::PhysicalDeviceShaderDrawParametersFeatures shaderDrawParametersFeatures;
+  shaderDrawParametersFeatures.shaderDrawParameters = true;
+  indexingFeatures.pNext = &shaderDrawParametersFeatures;
   createInfo.pNext = &indexingFeatures;
   vk::Device::operator=(physicalDevice.createDevice(createInfo));
-
+  vw::g::physicalDevice = physicalDevice;
+  vw::g::device = *this;
   mQueues.reserve(mQueueFamilies.size());
   for (uint32_t i = 0; i < queueFamilyCount; ++i)
-    mQueues.emplace_back(*this, getQueue(i,0), i);
+    mQueues.emplace_back(getQueue(i, 0), i);
 }
 
 vw::Device::~Device() {
@@ -203,12 +218,8 @@ void vw::CommandPool::allocateBuffers(uint32_t count) {
     return;
 
   vk::CommandBufferAllocateInfo allocateInfo{mHandle, vk::CommandBufferLevel::ePrimary, count};
-  auto newBuffers = mDeviceHandle.allocateCommandBuffers(allocateInfo);
+  auto newBuffers = vw::g::device.allocateCommandBuffers(allocateInfo);
   mBuffers.insert(mBuffers.end(), newBuffers.begin(), newBuffers.end());
-}
-
-vw::Semaphore::Semaphore(vk::Device device) : ContainerType{device} {
-  mHandle = mDeviceHandle.createSemaphore({});
 }
 
 vw::PhysicalDevice::PhysicalDevice(vk::PhysicalDevice physicalDevice)

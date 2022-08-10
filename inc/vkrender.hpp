@@ -12,7 +12,7 @@ struct AttachmentInfo {
 
 class RenderPass : public vw::HandleContainerUnique<vk::RenderPass> {
  public:
-  RenderPass(vk::Device device, ArrayProxy<AttachmentInfo> attachments, ArrayProxy<vk::SubpassDependency> dependencies);
+  RenderPass(ArrayProxy<AttachmentInfo> attachments, ArrayProxy<vk::SubpassDependency> dependencies);
   static inline constexpr AttachmentInfo colorAtt(vk::Format format,
                                                   bool store = true,
                                                   vk::ImageLayout finalLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -38,7 +38,10 @@ class RenderPass : public vw::HandleContainerUnique<vk::RenderPass> {
                                                               {},
                                                               vk::ImageLayout::ePresentSrcKHR}};
   }
-  static inline constexpr AttachmentInfo depthAtt(vk::Format format, bool store = false, vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e1) {
+  static inline constexpr AttachmentInfo depthAtt(vk::Format format,
+                                                  bool store = false,
+                                                  vk::ImageLayout finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+                                                  vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e1) {
     return {AttachmentUse::DepthStencil, vk::AttachmentDescription{{},
                                                                    format,
                                                                    sampleCount,
@@ -47,7 +50,7 @@ class RenderPass : public vw::HandleContainerUnique<vk::RenderPass> {
                                                                    {},
                                                                    {},
                                                                    {},
-                                                                   vk::ImageLayout::eDepthStencilAttachmentOptimal}};
+                                                                   finalLayout}};
   }
   static constexpr vk::SubpassDependency externalColorOutputDependency{VK_SUBPASS_EXTERNAL,
                                                                        0,
@@ -206,16 +209,11 @@ class GraphicsPipelineBuilder {
 
 class GraphicsPipeline : public vw::HandleContainerUnique<vk::Pipeline> {
  public:
-  GraphicsPipeline(vk::Device device, const vk::GraphicsPipelineCreateInfo& createInfo);
-};
-
-class PipelineLayout : public vw::HandleContainerUnique<vk::PipelineLayout> {
- public:
-  PipelineLayout(vk::Device device, ArrayProxy<vk::DescriptorSetLayout> setLayouts = {}, ArrayProxy<vk::PushConstantRange> pushConstantRanges = {});
+  GraphicsPipeline(const vk::GraphicsPipelineCreateInfo& createInfo);
 };
 
 class Framebuffer : public vw::HandleContainerUnique<vk::Framebuffer> {
  public:
-  Framebuffer(vk::Device device, vk::RenderPass renderPass, ArrayProxy<vk::ImageView> attachments, vk::Extent2D extent, uint32_t layers = 1);
+  Framebuffer(vk::RenderPass renderPass, ArrayProxy<vk::ImageView> attachments, vk::Extent2D extent, uint32_t layers = 1);
 };
 }  // namespace vw

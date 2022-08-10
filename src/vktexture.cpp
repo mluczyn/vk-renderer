@@ -22,7 +22,7 @@ vw::GenericImageFile::~GenericImageFile() {
   stbi_image_free(mDataStart);
 }
 
-vw::Sampler::Sampler(vk::Device device, vk::Filter filter, vk::SamplerAddressMode addressMode, float maxAnisotropy) : ContainerType{device} {
+vw::Sampler::Sampler(vk::Filter filter, vk::SamplerAddressMode addressMode, float maxAnisotropy) {
   vk::SamplerCreateInfo createInfo;
   createInfo.magFilter = filter;
   createInfo.minFilter = filter;
@@ -36,5 +36,5 @@ vw::Sampler::Sampler(vk::Device device, vk::Filter filter, vk::SamplerAddressMod
   createInfo.compareOp = vk::CompareOp::eNever;
   createInfo.borderColor = vk::BorderColor::eFloatOpaqueBlack;
 
-  mHandle = mDeviceHandle.createSampler(createInfo);
+  mHandle = vw::g::device.createSampler(createInfo);
 }
